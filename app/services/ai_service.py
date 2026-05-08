@@ -2,7 +2,9 @@ import os
 import pypdf
 from fastapi import UploadFile, HTTPException
 from typing import Dict, Any
-from openai import OpenAI
+
+# 1. Import the new modern SDK
+from groq import Groq
 
 class AIService:
     
@@ -43,36 +45,32 @@ class AIService:
 
     @staticmethod
     def analyze_resume_ai(text: str) -> Dict[str, Any]:
-        # Paste your actual key directly inside the quotes below
-        api_key = "AIzaSyDJc0e43-eTG1-TakzjalC3VowcGk3Ignw" 
+        # Your Groq API Key
+        api_key = os.environ.get("GROQ_API_KEY", "your_default_api_key")
         
-        if api_key == "PASTE_YOUR_OPENAI_KEY_HERE" or not api_key:
-            # Fallback to local analysis if the key is not set
-            return {
-                "skills": ["Python", "FastAPI", "Machine Learning", "React", "Django"],
-                "analysis_summary": "Warning: Using basic local analysis. Please update the API key in the code to run AI analysis.",
-                "strengths": ["Good combination of web development and AI skills"],
-                "weaknesses": ["Consider adding cloud/AWS certifications"]
-            }
-
         try:
-            client = OpenAI(api_key=api_key)
+            # 2. Use the new Client syntax
+            client = Groq(api_key=api_key)
+            
+            prompt = f"""You are an expert AI Resume Analyst and Career Advisor.
+            Analyze the following resume text and extract the skills, strengths, weaknesses, and a short career roadmap:
+            
+            {text}
+            """
+            
+            # 3. Use the new generate_content syntax with a modern model
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert AI Resume Analyst and Career Advisor."},
-                    {"role": "user", "content": f"Analyze the following resume text and extract the skills, strengths, weaknesses, and a short career roadmap:\n\n{text}"}
-                ],
-                temperature=0.3
+                model='llama-3.1-8b-instant', 
+                messages=[{"role": "user", "content": prompt}]
             )
             
             ai_output = response.choices[0].message.content
             
             return {
-                "skills": ["Python", "FastAPI", "Machine Learning", "React", "Django"],
+                "skills": ["Python", "FastAPI", "Machine Learning", "React", "Django"], # We will make this dynamic later
                 "analysis_summary": ai_output,
-                "strengths": ["Strong technical background in AI/ML and full-stack development"],
-                "weaknesses": ["Consider adding cloud/AWS certifications"]
+                "strengths": ["Strong technical background"],
+                "weaknesses": ["None identified"]
             }
             
         except Exception as e:

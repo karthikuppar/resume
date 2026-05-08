@@ -1,5 +1,7 @@
 import asyncio
 from app.db.session import engine, Base
+from app.models.user import User
+from app.models.resume import ResumeAnalysisModel # <-- Add this new import
 
 async def init_models():
     async with engine.begin() as conn:
