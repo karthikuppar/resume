@@ -1,84 +1,42 @@
 import os
-import pypdf
-from fastapi import UploadFile, HTTPException
-from typing import Dict, Any
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+from app.schemas.analysis import ResumeAnalysisResult
 
-# 1. Import the new modern SDK
-from groq import Groq
+# 1. Load the .env file so Python can find your key
+load_dotenv()
 
-class AIService:
+# 2. Initialize the modern Client
+# It automatically looks for os.environ.get("GEMINI_API_KEY")
+client = genai.Client()
+
+def analyze_resume_text(resume_text: str) -> ResumeAnalysisResult:
+    """
+    Takes raw resume text, sends it to Gemini using the modern SDK, 
+    and forces a structured JSON response.
+    """
+    system_prompt = """
+    You are an elite Technical Recruiter and AI Resume Analyzer. 
+    Your job is to read the provided resume text and extract the information perfectly.
+    You must NOT invent any information. If a detail is missing, leave it empty or default to 0.
+    """
+
+    print("Calling modern Gemini API...")
     
-    @staticmethod
-    async def save_upload_file(file: UploadFile) -> str:
-        valid_extensions = [".pdf", ".docx"]
-        file_ext = os.path.splitext(file.filename)[1].lower()
-        if file_ext not in valid_extensions:
-            raise HTTPException(
-                status_code=400, 
-                detail="Invalid file type. Only PDF and DOCX are supported."
-            )
-        
-        upload_dir = "uploads"
-        if not os.path.exists(upload_dir):
-            os.makedirs(upload_dir)
-            
-        file_path = os.path.join(upload_dir, file.filename)
-        with open(file_path, "wb") as buffer:
-            while content := await file.read(1024):
-                buffer.write(content)
-                
-        return file_path
+    # 3. Make the API call using the new structure
+    response = client.models.generate_content(
+        model='gemini-2.5-flash', # We upgraded you to the newest fast model
+        contents=resume_text,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=ResumeAnalysisResult, # Our Pydantic Blueprint!
+            temperature=0.1
+        )
+    )
 
-    @staticmethod
-    async def extract_text_from_file(file_path: str) -> str:
-        extracted_text = ""
-        if file_path.endswith(".pdf"):
-            reader = pypdf.PdfReader(file_path)
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    extracted_text += text + "\n"
-        else:
-            extracted_text = "DOCX extraction not supported in this version."
-            
-        return extracted_text.strip()
-
-    @staticmethod
-    def analyze_resume_ai(text: str) -> Dict[str, Any]:
-        # Your Groq API Key
-        api_key = os.environ.get("GROQ_API_KEY", "your_default_api_key")
-        
-        try:
-            # 2. Use the new Client syntax
-            client = Groq(api_key=api_key)
-            
-            prompt = f"""You are an expert AI Resume Analyst and Career Advisor.
-            Analyze the following resume text and extract the skills, strengths, weaknesses, and a short career roadmap:
-            
-            {text}
-            """
-            
-            # 3. Use the new generate_content syntax with a modern model
-            response = client.chat.completions.create(
-                model='llama-3.1-8b-instant', 
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            ai_output = response.choices[0].message.content
-            
-            return {
-                "skills": ["Python", "FastAPI", "Machine Learning", "React", "Django"], # We will make this dynamic later
-                "analysis_summary": ai_output,
-                "strengths": ["Strong technical background"],
-                "weaknesses": ["None identified"]
-            }
-            
-        except Exception as e:
-            return {
-                "skills": ["Python", "FastAPI"],
-                "analysis_summary": f"Could not connect to AI engine: {str(e)}",
-                "strengths": [],
-                "weaknesses": []
-            }
-
-ai_service = AIService()
+    # 4. Validate the JSON string returned by Gemini
+    validated_data = ResumeAnalysisResult.model_validate_json(response.text)
+    
+    return validated_data
